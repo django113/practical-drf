@@ -1,0 +1,25 @@
+class Sauce(models.Model):
+    name = models.CharField(max_length=100)
+
+    def __str__(self):
+        return self.name
+
+class Sandwich(models.Model):
+    name = models.CharField(max_length=100)
+    sauces = models.ManyToManyField(Sauce)
+
+    def __str__(self):
+        return self.name
+
+
+
+@receiver(m2m_changed, sender=Video.category.through)
+def video_category_changed(sender, **kwargs):
+    instance = kwargs.pop('instance', None)
+    pk_set = kwargs.pop('pk_set', None)
+    action = kwargs.pop('action', None)
+    if action == "pre_add":
+        if 1 not in pk_set:
+            c = Category.objects.get(pk=1)
+            instance.category.add(c)
+            instance.save()

@@ -1,0 +1,197 @@
+models.py
+======================================
+
+"""
+
+unique_code = required
+
+title = required
+
+date_created = required
+
+slug = required
+
+
+
+
+"""
+
+
+# Create your models here.
+class productsBrandModel(models.Model):
+    unique_code = models.CharField(max_length=250, null=True, unique=True, blank=True)
+    title = models.CharField(max_length=250)
+    description = models.TextField()
+
+    date_created = models.DateTimeField(auto_now_add=True)
+    slug = models.SlugField(max_length=250, null=True, unique=True, blank=True)
+
+    class Meta:
+        ordering = ['-id']
+
+
+pre_save.connect(slug_pre_save_receiver, sender=productsBrandModel)#project level /utils.py
+pre_save.connect(brand_unique_code_generator, sender=productsBrandModel)#app level /singals.py
+============================================================================================
+utils.py
+============
+import string, random
+from django.utils.text import slugify
+from enum import Enum
+
+# To create slug url
+def slug_pre_save_receiver(sender, instance, *args, **kwargs):
+    if not instance.slug:
+        instance.slug = unique_slug_generator(instance)
+
+def random_string_generator(size = 10, chars = string.ascii_lowercase + string.digits):
+    return ''.join(random.choice(chars) for _ in range(size))
+
+def unique_slug_generator(instance, new_slug = None):
+    if new_slug is not None:
+        slug = new_slug
+    else:
+        slug = "slug" + str(random.randint(0,10000)) + random_string_generator(size = 4)
+
+    Klass = instance.__class__
+    qs_exists = Klass.objects.filter(slug = slug).exists()
+
+    if qs_exists:
+        new_slug = "{slug}-{randstr}".format(
+            slug = slug, randstr = random_string_generator(size = 4))
+        return unique_slug_generator(instance, new_slug = new_slug)
+    return slug
+
+======================
+signals.py
+===================
+
+import random,string
+
+def brand_unique_code_generator(sender,instance,*args, **kwargs):
+    if not instance.unique_code:
+        # data=instance.title
+        # x = [i for i in range(4,15+1) if i%2!=0]
+        # instance.unique_code='product'+x
+        instance.unique_code=code_generator()
+
+"""
+https://stackoverflow.com/questions/2257441/random-string-generation-with-upper-case-letters-and-digits
+
+>>> string.ascii_uppercase
+'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
+>>> string.digits
+'0123456789'
+>>> string.ascii_uppercase + string.digits
+'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
+
+"""
+def code_generator(size=5,chars=string.ascii_uppercase + string.digits):
+    # code=''.join(random.choice(chars) for _  in range(size))
+    code=''.join(random.choice(chars) for _  in range(size))
+    print(code)
+    return 'brand' + code
+# brand12345, brand78458
+===========================================================================================================
+
+
+
+
+
+=================
+serializers.py
+===============
+from products.models import productsBrandModel
+from rest_framework import serializers,status
+
+
+class productsAdminBrandSerializer(serializers.ModelSerializer):
+
+    def validate(self, data):
+        title = data.get("title", None)
+        brand = productsBrandModel.objects.filter(title__iexact=title)
+        if brand.exists():
+            raise serializers.ValidationError({"errors": "This brand already exists",'status': status.HTTP_400_BAD_REQUEST})
+        else:
+            return data
+
+
+    class Meta:
+        model = productsBrandModel
+        fields = "__all__"
+
+
+
+views.py
+=========================
+
+from products.models import productsBrandModel
+from .serilaizers import productsAdminBrandSerializer
+from rest_framework.response import Response
+from rest_framework.views import APIView
+from rest_framework.permissions import IsAuthenticated,AllowAny,BasePermission
+from rest_framework.authentication import SessionAuthentication,BasicAuthentication,TokenAuthentication
+from rest_framework.pagination import LimitOffsetPagination
+from rest_framework import generics,status,filters
+# from django_filters import rest_framework as dj_filters
+
+class productsAdminBrandGenericsView(generics.ListAPIView,generics.CreateAPIView):
+    serializer_class = productsAdminBrandSerializer
+    queryset = productsBrandModel.objects.all()
+    # permission_classes = (IsAuthenticated,)
+    # authenticate_class = [SessionAuthentication,BasicAuthentication,TokenAuthentication]
+    # pagination_class = LimitOffsetPagination
+    search_fields = ["title",]
+    filter_backends = (filters.SearchFilter,)
+
+    def list(self,request,*args, **kwargs):
+        s_name_brand = productsBrandModel.objects.filter(title__startwith="s")
+        serializer = self.get_serializer(self.paginate_queryset(self.filter_queryset(self.get_queryset())),many=True,context={"request":request})
+        return self.get_paginated_response(serializer.data)
+
+    def post(self, request):
+        serializer = productsAdminBrandSerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        else:
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class productsAdminBrandDetailsAPIView(APIView):
+    serializer_class = productsAdminBrandSerializer
+    permission_classes = (IsAuthenticated,)
+    authenticate_class = [SessionAuthentication,BasicAuthentication,TokenAuthentication]
+    pagination_class = None
+
+    def get(self, request, slug):
+        data = productsBrandModel.objects.get(slug=slug)
+        serializer = productsAdminBrandSerializer(data)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    def put(self, request, slug):
+        data = productsBrandModel.objects.get(slug=slug)
+        serializer = productsAdminBrandSerializer(data=request.data, instance=data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data,status=status.HTTP_200_OK)
+        else:
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    def delete(self,request, slug):
+        data = productsBrandModel.objects.get(slug=slug)
+        data.delete()
+        return Response({"data": "Objects Deleted Successfully"}, status=status.HTTP_202_ACCEPTED)
+
+ urls.py
+ ============================
+
+
+ from django.urls import path
+from .views import productsAdminBrandGenericsView,productsAdminBrandDetailsAPIView
+urlpatterns = [
+    path('products-brand/', productsAdminBrandGenericsView.as_view(), name='productsAdminBrandGenericsViewURL'),
+    path('products-brand/<slug>/', productsAdminBrandDetailsAPIView.as_view(), name='productsAdminBrandDetailsAPIViewURL')
+
+]
+

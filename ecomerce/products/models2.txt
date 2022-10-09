@@ -1,0 +1,170 @@
+from django.db import models
+from django.db.models import Q
+from django.dispatch import receiver
+from django.utils.text import slugify
+
+from ecomerce_core.uitil import slug_pre_save_receiver
+from django.db.models.signals import pre_save, post_save, pre_delete, post_delete, m2m_changed
+
+from products.signals import brand_unique_code_generator
+
+from django.contrib.auth import get_user_model
+
+User = get_user_model()
+
+"""
+
+unique_code = required
+
+title = required
+
+date_created = required
+
+slug = required
+
+
+
+
+"""
+
+
+# Create your models here.
+class productsBrandModel(models.Model):
+    unique_code = models.CharField(max_length=250, null=True, unique=True, blank=True)
+    title = models.CharField(max_length=250)
+    description = models.TextField()
+
+    date_created = models.DateTimeField(auto_now_add=True)
+    slug = models.SlugField(max_length=250, null=True, unique=True, blank=True)
+
+    class Meta:
+        ordering = ['id']
+
+    def __str__(self):
+        return self.title
+
+
+pre_save.connect(slug_pre_save_receiver, sender=productsBrandModel)
+pre_save.connect(brand_unique_code_generator, sender=productsBrandModel)
+
+
+class productsProductMainModel(models.Model):
+    name = models.CharField(max_length=200)
+    brand = models.ForeignKey(productsBrandModel, on_delete=models.CASCADE,
+                              related_name='productsProductMainModel_brand')
+    price = models.FloatField()
+
+    date_created = models.DateTimeField(auto_now_add=True)
+    slug = models.SlugField(max_length=250, null=True, unique=True, blank=True)
+
+    def __str__(self):
+        return self.name
+
+    def get_productbrand(self, obj):
+        try:
+            brand = obj.brand.title
+        except:
+            brand = ""
+        return brand
+
+
+pre_save.connect(slug_pre_save_receiver, sender=productsProductMainModel)
+
+"""
+product = required
+quantity =required
+initalprice = required
+finalprice = required
+date_created = required
+slug = required
+
+"""
+
+
+class productsCartModel(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='productsCartModel_user')
+    product = models.ForeignKey(productsProductMainModel, on_delete=models.CASCADE,
+                                related_name='productsCartModel_product')
+    quantity = models.IntegerField(default=1)
+    initial_price = models.FloatField(null=True, blank=True)  # initial price is product price
+    final_price = models.FloatField(null=True, blank=True)  # quantity * initial price
+    date_created = models.DateTimeField(auto_now_add=True)
+    slug = models.SlugField(max_length=250, null=True, unique=True, blank=True)
+
+    def __str__(self):
+        return str(self.product)
+
+    def save(self, *args, **kwargs):
+        self.initial_price = slugify(self.product.price)
+        self.final_price = slugify(self.product.price * self.quantity)
+        super(productsCartModel, self).save(*args, **kwargs)
+
+
+pre_save.connect(slug_pre_save_receiver, sender=productsCartModel)
+
+
+class productsUserCartModel(models.Model):
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='productsUserCartModel_user')
+    cart_line = models.ManyToManyField(productsCartModel, blank=True, related_name='productsUserCartModel_cart_line')
+    price = models.FloatField(default=0)
+
+    date_created = models.DateTimeField(auto_now_add=True)
+    slug = models.SlugField(max_length=250, null=True, unique=True, blank=True)
+
+    def __str__(self):
+        return str(self.cart_line)
+        # return str(self.cart_line) + " " + str(self.user)
+
+    def save(self, *args, **kwargs):
+        price = self.cart_line.all().filter(user=self.user).values()
+        for i in price:
+            print(i)
+        # price = self.cart_line.all().filter(user=self.user).values_list('final_price', flat=True)
+        # print(self.cart_line.all().filter(user=self.user).values_list('final_price', flat=True), 'created data signal user cart')
+        self.price=sum(price)
+        print('save method')
+        super(productsUserCartModel, self).save(*args, **kwargs)
+
+
+pre_save.connect(slug_pre_save_receiver, sender=productsUserCartModel)
+
+
+
+#
+#
+# @receiver(pre_save, sender=productsUserCartModel)
+# def cart_post_save_receiver(sender, instance, *args, **kwargs):
+#     """
+#     before saved in the database
+#     """
+#     if instance:
+#
+#         price = instance.cart_line.all().values_list('final_price', flat=True)
+#         print(instance.cart_line.all().values_list('final_price', flat=True), 'created data signal user cart')
+#         updated = productsUserCartModel.objects.filter(user=instance.user).update(price=sum(price))
+#         print(updated, 'instance1')
+#     else:
+#         price = instance.cart_line.all().values_list('final_price', flat=True)
+#         print(instance.cart_line.all().values_list('final_price', flat=True), 'instance data signal user cart')
+#         updated = productsUserCartModel.objects.filter(user=instance.user).update(price=sum(price))
+#         print(updated, 'instance2')
+#
+#
+
+#
+
+@receiver(post_save, sender=User)
+def user_post_save_receiver(sender, instance, created, *args, **kwargs):
+    """
+    after saved in the database
+    """
+    if created:
+        print("post save user phone---------new created----------> ", instance.phone)
+        # trigger pre_save
+        if instance:
+            product_user_cart = productsUserCartModel.objects.create(user=instance)
+            print(product_user_cart, 'user cart is created')
+            instance.save()
+        # trigger post_save
+    else:
+        print('post save------updated2------->', instance.phone, "was just saved")

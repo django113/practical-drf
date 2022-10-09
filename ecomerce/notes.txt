@@ -1,0 +1,31 @@
+create project
+project inside floder name is changed?
+    example: 
+    1.project name is abc
+    2.changed project name is abc_core
+
+    3.project name is abc to abc_core
+        1.wsgi.py
+        2.asgi.py
+        3.settings.py
+        4.manage.py
+    4.project floder in utils.py is created?
+        utils.py in slug related created?---------company stands
+        signals.py somecode genrated pupose ?-------------company stands
+    5.app level folder ------>api_v1_admin----------->urls.py,views.py,serializers.py
+        1.serializers.py
+            1.app name + side+ model Serializers=booksAdminBookSerializer
+        2.views.py-------->
+                       1.app name + side +model+GenericsView ==booksAdminBookGenericsView-----------list & create(generics.ListAPIView,generics.CreateAPIView)
+                       1.app name + side +model + DetailsAPIView==booksAdminBookDetailsAPIView--------get,put,delete.(APIView)
+
+
+
+
+    
+
+
+
+
+
+
